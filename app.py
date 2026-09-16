@@ -7,19 +7,21 @@ from pypdf import PdfReader
 from google import genai
 
 
-# -----------------------------
-# Page configuration
-# -----------------------------
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
 st.set_page_config(
     page_title="AI Resume Analyzer",
     page_icon="📄",
-    layout="centered"
+    layout="wide"
 )
 
 
-# -----------------------------
-# Load environment variables
-# -----------------------------
+# ============================================================
+# LOAD API KEY
+# ============================================================
+
 load_dotenv()
 
 api_key = os.getenv("GEMINI_API_KEY")
@@ -29,82 +31,119 @@ if not api_key:
     st.stop()
 
 
-# -----------------------------
-# Gemini client
-# -----------------------------
+# ============================================================
+# GEMINI CLIENT
+# ============================================================
+
 client = genai.Client(api_key=api_key)
 
 
-# -----------------------------
-# App title
-# -----------------------------
+# ============================================================
+# HEADER
+# ============================================================
+
 st.title("📄 AI Resume Analyzer")
-st.write(
-    "Upload your resume and get an AI-powered analysis "
-    "using Gemini."
+
+st.markdown(
+    "Upload your resume to get an **AI-powered resume analysis, "
+    "ATS score, and job description match**."
 )
 
+st.divider()
 
-# -----------------------------
-# Resume upload
-# -----------------------------
+
+# ============================================================
+# RESUME UPLOAD
+# ============================================================
+
+st.subheader("📤 Upload Your Resume")
+
 resume = st.file_uploader(
-    "Upload your resume (PDF)",
+    "Choose a PDF resume",
     type=["pdf"]
 )
 
 
+# ============================================================
+# PROCESS RESUME
+# ============================================================
+
 if resume is not None:
 
-    st.success(f"Resume uploaded: {resume.name}")
+    st.success(f"✅ Resume uploaded: {resume.name}")
 
-    # -----------------------------
-    # Extract resume text
-    # -----------------------------
+    # --------------------------------------------------------
+    # Extract PDF text
+    # --------------------------------------------------------
+
     try:
+
         reader = PdfReader(resume)
 
         resume_text = ""
 
         for page in reader.pages:
+
             text = page.extract_text()
 
             if text:
                 resume_text += text + "\n"
 
     except Exception:
-        st.error("Could not read this PDF.")
+
+        st.error(
+            "❌ Could not read this PDF. "
+            "Please upload a valid text-based PDF."
+        )
+
         st.stop()
 
 
-    # -----------------------------
+    # --------------------------------------------------------
     # Check extracted text
-    # -----------------------------
-    if resume_text.strip():
+    # --------------------------------------------------------
 
-        # -----------------------------
-        # Show extracted text
-        # -----------------------------
-        with st.expander("📖 View Extracted Resume Text"):
-            st.text_area(
-                "Resume content",
-                resume_text,
-                height=300
-            )
+    if not resume_text.strip():
+
+        st.warning(
+            "⚠️ Could not extract text from this PDF. "
+            "Please upload a text-based PDF."
+        )
+
+        st.stop()
 
 
-        # =====================================================
-        # RESUME ANALYSIS
-        # =====================================================
+    # --------------------------------------------------------
+    # Resume preview
+    # --------------------------------------------------------
 
-        if st.button("🤖 Analyze Resume", type="primary"):
+    with st.expander("📖 View Extracted Resume Text"):
 
-            prompt = f"""
+        st.text_area(
+            "Resume content",
+            resume_text,
+            height=300
+        )
+
+
+    # ========================================================
+    # RESUME ANALYSIS
+    # ========================================================
+
+    st.subheader("🤖 Resume Analysis")
+
+    if st.button(
+        "Analyze Resume",
+        type="primary",
+        use_container_width=True
+    ):
+
+        prompt = f"""
 You are an expert resume analyzer and ATS specialist.
 
 Analyze the following resume carefully.
 
-Give the analysis using exactly these sections:
+Give the analysis using these sections:
 
 ## Overall Summary
 
@@ -114,7 +153,7 @@ Give a short summary of the candidate's profile.
 
 Give an estimated ATS score out of 100.
 
-Also explain briefly why the resume received this score.
+Explain briefly why the resume received this score.
 
 Consider:
 - Resume formatting
@@ -148,106 +187,135 @@ Give practical suggestions to improve the resume.
 
 ## Suitable Job Roles
 
-Suggest job roles that match the candidate's current skills and experience.
+Suggest job roles that match the candidate's current skills
+and experience.
 
-Keep the analysis clear, practical, and easy to understand.
-
-Do not invent information that is not present in the resume.
+Important:
+- Only use information actually present in the resume.
+- Do not invent experience, skills, education, or achievements.
+- Keep the analysis clear and practical.
 
 Resume:
 
 {resume_text}
 """
 
-            with st.spinner("Gemini is analyzing your resume..."):
+        with st.spinner("🤖 Gemini is analyzing your resume..."):
 
-                try:
+            try:
 
-                    interaction = client.interactions.create(
-                        model="gemini-3.6-flash",
-                        input=prompt
-                    )
+                interaction = client.interactions.create(
+                    model="gemini-3.6-flash",
+                    input=prompt
+                )
 
-                    analysis = interaction.output_text
+                analysis = interaction.output_text
 
-                except Exception:
+            except Exception:
 
-                    st.error(
-                        "Gemini is temporarily unavailable. "
-                        "Please try again."
-                    )
+                st.error(
+                    "Gemini is temporarily unavailable. "
+                    "Please try again."
+                )
 
-                    st.stop()
+                st.stop()
 
 
-            # -----------------------------
-            # Extract ATS score
-            # -----------------------------
-            score_match = re.search(
-                r"ATS Score.*?(\d+)\s*/\s*100",
-                analysis,
-                re.IGNORECASE | re.DOTALL
-            )
+        # ----------------------------------------------------
+        # Extract ATS score
+        # ----------------------------------------------------
 
-            if score_match:
+        score_match = re.search(
+            r"ATS Score.*?(\d+)\s*/\s*100",
+            analysis,
+            re.IGNORECASE | re.DOTALL
+        )
 
-                ats_score = int(score_match.group(1))
 
-                st.subheader("📊 ATS Score")
+        if score_match:
+
+            ats_score = int(score_match.group(1))
+
+            # Keep score between 0 and 100
+            ats_score = max(0, min(100, ats_score))
+
+            st.subheader("📊 ATS Score")
+
+            col1, col2 = st.columns([1, 2])
+
+            with col1:
 
                 st.metric(
-                    label="Resume ATS Score",
-                    value=f"{ats_score}/100"
+                    "Resume ATS Score",
+                    f"{ats_score}/100"
                 )
 
-            # -----------------------------
-            # Full analysis
-            # -----------------------------
-            st.subheader("🤖 Gemini Resume Analysis")
+            with col2:
 
-            st.markdown(analysis)
+                st.progress(
+                    ats_score / 100
+                )
+
+                st.caption(
+                    f"ATS compatibility score: {ats_score}%"
+                )
 
 
-        # =====================================================
-        # JOB DESCRIPTION MATCHING
-        # =====================================================
+        # ----------------------------------------------------
+        # Full analysis
+        # ----------------------------------------------------
 
-        st.divider()
+        st.subheader("📋 Detailed Analysis")
 
-        st.subheader("🎯 Job Description Matching")
+        st.markdown(analysis)
 
-        st.write(
-            "Paste a job description below to compare it "
-            "with your resume."
+
+    # ========================================================
+    # JOB DESCRIPTION MATCHING
+    # ========================================================
+
+    st.divider()
+
+    st.subheader("🎯 Job Description Matching")
+
+    st.write(
+        "Paste a job description below to see how well "
+        "your resume matches the role."
+    )
+
+
+    job_description = st.text_area(
+        "Job Description",
+        height=250,
+        placeholder=(
+            "Paste the job description here...\n\n"
+            "Example:\n"
+            "We are looking for a Python developer with "
+            "experience in FastAPI, SQL, REST APIs, Git, "
+            "Docker and AWS."
         )
+    )
 
-        job_description = st.text_area(
-            "Paste Job Description",
-            height=250,
-            placeholder=(
-                "Example: We are looking for a Python developer "
-                "with experience in FastAPI, SQL, REST APIs, "
-                "Git, Docker and AWS..."
+
+    if st.button(
+        "🎯 Analyze Job Match",
+        use_container_width=True
+    ):
+
+        if not job_description.strip():
+
+            st.warning(
+                "⚠️ Please paste a job description first."
             )
-        )
 
+        else:
 
-        if st.button("🎯 Analyze Job Match"):
-
-            if not job_description.strip():
-
-                st.warning(
-                    "Please paste a job description first."
-                )
-
-            else:
-
-                job_prompt = f"""
+            job_prompt = f"""
 You are an expert recruiter and resume-job matching system.
 
-Compare the resume with the job description below.
+Compare the resume with the job description.
 
-Give the result using exactly these sections:
+Give the result using these sections:
 
 ## Job Match Score
 
@@ -287,61 +355,85 @@ JOB DESCRIPTION:
 {job_description}
 """
 
-                with st.spinner(
-                    "Gemini is comparing your resume with the job..."
-                ):
 
-                    try:
+            with st.spinner(
+                "🎯 Gemini is comparing your resume with the job..."
+            ):
 
-                        job_interaction = client.interactions.create(
-                            model="gemini-3.6-flash",
-                            input=job_prompt
-                        )
+                try:
 
-                        job_analysis = job_interaction.output_text
+                    job_interaction = client.interactions.create(
+                        model="gemini-3.6-flash",
+                        input=job_prompt
+                    )
 
-                    except Exception:
+                    job_analysis = job_interaction.output_text
 
-                        st.error(
-                            "Gemini is temporarily unavailable. "
-                            "Please try again."
-                        )
+                except Exception:
 
-                        st.stop()
+                    st.error(
+                        "Gemini is temporarily unavailable. "
+                        "Please try again."
+                    )
+
+                    st.stop()
 
 
-                # -----------------------------
-                # Extract job match score
-                # -----------------------------
-                match_score = re.search(
-                    r"Job Match Score.*?(\d+)\s*/\s*100",
-                    job_analysis,
-                    re.IGNORECASE | re.DOTALL
-                )
+            # ------------------------------------------------
+            # Extract job match score
+            # ------------------------------------------------
 
-                if match_score:
+            match_score = re.search(
+                r"Job Match Score.*?(\d+)\s*/\s*100",
+                job_analysis,
+                re.IGNORECASE | re.DOTALL
+            )
 
-                    score = int(match_score.group(1))
 
-                    st.subheader("🎯 Job Match Score")
+            if match_score:
+
+                score = int(match_score.group(1))
+
+                # Keep score between 0 and 100
+                score = max(0, min(100, score))
+
+                st.subheader("🎯 Job Match Score")
+
+                col1, col2 = st.columns([1, 2])
+
+                with col1:
 
                     st.metric(
-                        label="Resume ↔ Job Match",
-                        value=f"{score}/100"
+                        "Resume ↔ Job Match",
+                        f"{score}/100"
+                    )
+
+                with col2:
+
+                    st.progress(
+                        score / 100
+                    )
+
+                    st.caption(
+                        f"Job compatibility score: {score}%"
                     )
 
 
-                # -----------------------------
-                # Display job analysis
-                # -----------------------------
-                st.subheader("🔍 Job Matching Analysis")
+            # ------------------------------------------------
+            # Job analysis
+            # ------------------------------------------------
 
-                st.markdown(job_analysis)
+            st.subheader("🔍 Job Matching Analysis")
+
+            st.markdown(job_analysis)
 
 
-    else:
+# ============================================================
+# FOOTER
+# ============================================================
 
-        st.warning(
-            "Could not extract text from this PDF. "
-            "Please upload a text-based PDF."
-        )
+st.divider()
+
+st.caption(
+    "AI Resume Analyzer • Powered by Gemini"
+)
