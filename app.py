@@ -59,7 +59,7 @@ if resume is not None:
     st.success(f"Resume uploaded: {resume.name}")
 
     # -----------------------------
-    # Extract text from PDF
+    # Extract resume text
     # -----------------------------
     try:
         reader = PdfReader(resume)
@@ -72,7 +72,7 @@ if resume is not None:
             if text:
                 resume_text += text + "\n"
 
-    except Exception as e:
+    except Exception:
         st.error("Could not read this PDF.")
         st.stop()
 
@@ -82,7 +82,9 @@ if resume is not None:
     # -----------------------------
     if resume_text.strip():
 
-        # Show extracted resume text
+        # -----------------------------
+        # Show extracted text
+        # -----------------------------
         with st.expander("📖 View Extracted Resume Text"):
             st.text_area(
                 "Resume content",
@@ -91,13 +93,14 @@ if resume is not None:
             )
 
 
-        # -----------------------------
-        # Analyze button
-        # -----------------------------
+        # =====================================================
+        # RESUME ANALYSIS
+        # =====================================================
+
         if st.button("🤖 Analyze Resume", type="primary"):
 
             prompt = f"""
-You are an expert resume analyzer and ATS (Applicant Tracking System) specialist.
+You are an expert resume analyzer and ATS specialist.
 
 Analyze the following resume carefully.
 
@@ -156,9 +159,6 @@ Resume:
 {resume_text}
 """
 
-            # -----------------------------
-            # Call Gemini
-            # -----------------------------
             with st.spinner("Gemini is analyzing your resume..."):
 
                 try:
@@ -170,7 +170,7 @@ Resume:
 
                     analysis = interaction.output_text
 
-                except Exception as e:
+                except Exception:
 
                     st.error(
                         "Gemini is temporarily unavailable. "
@@ -200,21 +200,143 @@ Resume:
                     value=f"{ats_score}/100"
                 )
 
-            else:
-
-                st.subheader("📊 ATS Score")
-                st.info(
-                    "Gemini did not return the ATS score "
-                    "in the expected format."
-                )
-
-
             # -----------------------------
-            # Full AI analysis
+            # Full analysis
             # -----------------------------
             st.subheader("🤖 Gemini Resume Analysis")
 
             st.markdown(analysis)
+
+
+        # =====================================================
+        # JOB DESCRIPTION MATCHING
+        # =====================================================
+
+        st.divider()
+
+        st.subheader("🎯 Job Description Matching")
+
+        st.write(
+            "Paste a job description below to compare it "
+            "with your resume."
+        )
+
+        job_description = st.text_area(
+            "Paste Job Description",
+            height=250,
+            placeholder=(
+                "Example: We are looking for a Python developer "
+                "with experience in FastAPI, SQL, REST APIs, "
+                "Git, Docker and AWS..."
+            )
+        )
+
+
+        if st.button("🎯 Analyze Job Match"):
+
+            if not job_description.strip():
+
+                st.warning(
+                    "Please paste a job description first."
+                )
+
+            else:
+
+                job_prompt = f"""
+You are an expert recruiter and resume-job matching system.
+
+Compare the resume with the job description below.
+
+Give the result using exactly these sections:
+
+## Job Match Score
+
+Give a match score from 0 to 100.
+
+## Matching Skills
+
+List skills and requirements from the job description
+that are clearly present in the resume.
+
+## Missing Skills
+
+List important skills or requirements from the job description
+that are not clearly present in the resume.
+
+## Matching Keywords
+
+List important keywords that appear in both the resume
+and job description.
+
+## Recommendations
+
+Give practical suggestions for improving the resume
+for this specific job.
+
+Important:
+- Only use information actually present in the resume.
+- Do not claim the candidate has a skill that is not shown.
+- Keep the result clear and practical.
+
+RESUME:
+
+{resume_text}
+
+JOB DESCRIPTION:
+
+{job_description}
+"""
+
+                with st.spinner(
+                    "Gemini is comparing your resume with the job..."
+                ):
+
+                    try:
+
+                        job_interaction = client.interactions.create(
+                            model="gemini-3.6-flash",
+                            input=job_prompt
+                        )
+
+                        job_analysis = job_interaction.output_text
+
+                    except Exception:
+
+                        st.error(
+                            "Gemini is temporarily unavailable. "
+                            "Please try again."
+                        )
+
+                        st.stop()
+
+
+                # -----------------------------
+                # Extract job match score
+                # -----------------------------
+                match_score = re.search(
+                    r"Job Match Score.*?(\d+)\s*/\s*100",
+                    job_analysis,
+                    re.IGNORECASE | re.DOTALL
+                )
+
+                if match_score:
+
+                    score = int(match_score.group(1))
+
+                    st.subheader("🎯 Job Match Score")
+
+                    st.metric(
+                        label="Resume ↔ Job Match",
+                        value=f"{score}/100"
+                    )
+
+
+                # -----------------------------
+                # Display job analysis
+                # -----------------------------
+                st.subheader("🔍 Job Matching Analysis")
+
+                st.markdown(job_analysis)
 
 
     else:
