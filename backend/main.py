@@ -191,6 +191,12 @@ async def job_match(
     job_description: str = Form(...)
 ):
 
+    if not resume.filename.lower().endswith(".pdf"):
+        return {
+            "success": False,
+            "error": "Please upload a PDF resume."
+        }
+
     file_bytes = await resume.read()
 
     try:
@@ -294,4 +300,64 @@ JOB DESCRIPTION:
         "filename": resume.filename,
         "job_match_score": score,
         "analysis": analysis
+    }
+
+
+# AI Chatbot endpoint
+@app.post("/chat")
+async def chat(message: str = Form(...)):
+
+    if not message.strip():
+        return {
+            "success": False,
+            "error": "Please enter a message."
+        }
+
+    chat_prompt = f"""
+You are the AI assistant for an AI Resume Analyzer application.
+
+Your job is to help users with:
+
+- Resume writing
+- ATS optimization
+- Job applications
+- Resume keywords
+- Technical and soft skills
+- Interview preparation
+- Career-related questions
+- Improving resumes for specific job roles
+
+Give clear, practical, beginner-friendly answers.
+
+Important:
+- Do not invent information about the user's resume.
+- Do not claim the user has skills or experience that they have not provided.
+- If the user asks something unrelated to resumes, jobs, careers,
+  or professional development, politely explain that you are
+  designed primarily for resume and career assistance.
+- Keep answers concise but useful.
+
+User message:
+
+{message}
+"""
+
+    try:
+        interaction = client.interactions.create(
+            model="gemini-3.6-flash",
+            input=chat_prompt
+        )
+
+        response = interaction.output_text
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": "Gemini analysis failed.",
+            "details": str(e)
+        }
+
+    return {
+        "success": True,
+        "response": response
     }
